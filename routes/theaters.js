@@ -2,30 +2,46 @@ const express = require('express');
 const router = express.Router();
 const Theater = require('../models/Theater');
 const auth = require('../middleware/auth');
+const { mockTheaters } = require('../mock-data');
 
 // Get all theaters
 router.get('/', async (req, res) => {
   try {
     const { city, movie } = req.query;
-    let query = { isActive: true };
     
-    if (city) {
-      query['address.city'] = new RegExp(city, 'i');
+    // Try database first, fallback to mock data
+    let theaters;
+    try {
+      let query = { isActive: true };
+      
+      if (city) {
+        query['address.city'] = new RegExp(city, 'i');
+      }
+      
+      theaters = await Theater.find(query)
+        .populate('shows.movie', 'title poster duration language genre')
+        .select('-__v');
+      
+      // Filter theaters by movie if specified
+      if (movie) {
+        theaters = theaters.filter(theater => 
+          theater.shows.some(show => show.movie._id.toString() === movie)
+        );
+      }
+    } catch (dbError) {
+      console.log('Using mock data - MongoDB not available');
+      theaters = mockTheaters.filter(theater => {
+        if (city && !theater.address.city.toLowerCase().includes(city.toLowerCase())) {
+          return false;
+        }
+        if (movie) {
+          return theater.shows.some(show => show.movie._id === movie);
+        }
+        return true;
+      });
     }
     
-    const theaters = await Theater.find(query)
-      .populate('shows.movie', 'title poster duration language genre')
-      .select('-__v');
-    
-    // Filter theaters by movie if specified
-    let filteredTheaters = theaters;
-    if (movie) {
-      filteredTheaters = theaters.filter(theater => 
-        theater.shows.some(show => show.movie._id.toString() === movie)
-      );
-    }
-    
-    res.json(filteredTheaters);
+    res.json(theaters);
   } catch (error) {
     console.error('Error fetching theaters:', error);
     res.status(500).json({ message: 'Server error' });
