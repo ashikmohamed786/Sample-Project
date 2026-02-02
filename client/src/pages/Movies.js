@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
-import axios from 'axios';
+import { getMovies, getMoviesByLanguage } from '../services/mockDataService';
 import './Movies.css';
 
 const Movies = () => {
@@ -14,36 +14,41 @@ const Movies = () => {
 
   useEffect(() => {
     fetchMovies();
-  }, [language, filter]);
+  }, [fetchMovies]);
 
-  const fetchMovies = async () => {
+  const fetchMovies = useCallback(async () => {
     try {
-      let url = '/api/movies';
-      const params = new URLSearchParams();
+      setLoading(true);
+      let movieData;
       
       if (language && language !== 'all') {
-        params.append('language', language);
+        movieData = await getMoviesByLanguage(language);
+      } else {
+        movieData = await getMovies();
       }
+      
+      // Apply filters
+      let filteredMovies = movieData;
       if (filter !== 'all') {
         if (filter === '3d') {
-          params.append('is3D', 'true');
+          filteredMovies = movieData.filter(movie => movie.is3D);
         } else {
-          params.append('genre', filter);
+          filteredMovies = movieData.filter(movie => 
+            movie.genre && movie.genre.some(g => 
+              g.toLowerCase() === filter.toLowerCase()
+            )
+          );
         }
       }
       
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
-      
-      const response = await axios.get(url);
-      setMovies(response.data);
+      setMovies(filteredMovies);
     } catch (error) {
       console.error('Error fetching movies:', error);
+      setMovies([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [language, filter]);
 
   const handleMovieClick = (movieId) => {
     navigate(`/movie/${movieId}`);
